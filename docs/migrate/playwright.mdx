@@ -178,6 +178,7 @@ run only in a browser, so a test that uses it declares
 | `test.describe.skip`, `test.describe.serial`, `describe.configure({ mode: 'serial', retries, timeout })` | `test.describe(title, { skip, serial, retries, timeout }, fn)` |
 | `{ tag: '@smoke' }` | `{ tags: ['smoke'] }` on a test or group |
 | `test.extend({ fixture })` | the same shape; a fixture that needs another goes in a chained `extend` |
+| `page.pause()` | `screen.pause()`, with `--headed` to look at the browser |
 
 </Accordion>
 <Accordion title="CLI">
@@ -297,7 +298,6 @@ purpose. Use the workaround, or keep the test in Playwright.
 | The Playwright Docker image | The image for the `playwright-core` version `@e2e-dev/web` pins, or `npx @e2e-dev/web install chromium --with-deps` |
 | `test.use({ ... })` in a file or describe | Runner options on the group, engine options on a target, `browser.setViewport` at runtime |
 | `projects[].dependencies`, `teardown` | A top-level `test.setup` for sign-in; a script around the run |
-| `page.pause()` | `--step --headed` holds each step until a key |
 | The `line`, `dot`, and `github` reporters | `list`; `github()` posts a pull request comment |
 
 </Accordion>

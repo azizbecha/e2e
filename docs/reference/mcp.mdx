@@ -221,6 +221,16 @@ exit 1: a test failed or timed out
 - Cancelling the call interrupts the run as Ctrl-C would, pressed again every
   15 seconds, and kills it 15 seconds after the third. The next `run_tests`
   waits for it to exit.
+- The run doesn't have a terminal. `CI` is set in it only when the server's
+  environment sets it.
+- Remove [`screen.pause()`](/reference/screen#screen-pause) calls before
+  calling `run_tests`. Without `CI`, a test that reaches one is paused, and
+  the agent doesn't get an answer until the run ends or the client cancels
+  the call. To resume the test, run `e2e run --step next` from a shell in the
+  server's directory. To end the run, run `e2e run --step stop`. A run with
+  a paused test is stopped after 30 minutes without any activity (see
+  [Pause a test](/debugging#pause-a-test)). The call then ends with exit 130,
+  an error result.
 - When the server shuts down it refuses new runs and interrupts the one in
   flight. A run whose server dies interrupts itself the same way.
 

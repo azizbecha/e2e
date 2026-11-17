@@ -167,6 +167,7 @@ test('checkout', async ({ app, agent, screen }) => {
 | `test.describe.skip`, `test.describe.serial`, `describe.configure({ mode: 'serial', retries, timeout })` | `test.describe(title, { skip, serial, retries, timeout }, fn)` |
 | `{ tag: '@smoke' }` | テストまたはグループの `{ tags: ['smoke'] }` |
 | `test.extend({ fixture })` | 同じ形式。別のフィクスチャに依存するものは、次の `extend` を連結 |
+| `page.pause()` | `screen.pause()`。ブラウザを見るには `--headed` を付ける |
 
 </Accordion>
 <Accordion title="CLI">
@@ -282,7 +283,6 @@ export const test = base.extend<{ accountPage: AccountPage }>({
 | Playwright の Docker イメージ | `@e2e-dev/web` が固定する `playwright-core` バージョンのイメージ、または `npx @e2e-dev/web install chromium --with-deps` |
 | ファイルや describe 内の `test.use({ ... })` | ランナーのオプションはグループ、エンジンのオプションはターゲット、実行時の変更は `browser.setViewport` |
 | `projects[].dependencies`, `teardown` | サインインはトップレベルの `test.setup`。実行の前後を囲むスクリプト |
-| `page.pause()` | `--step --headed` で、キー入力まで各ステップを停止 |
 | `line`、`dot`、`github` レポーター | `list`。`github()` はプルリクエストにコメントを投稿 |
 
 </Accordion>

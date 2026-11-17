@@ -337,14 +337,18 @@ export interface StepRecorderOptions {
    * may take millions of steps. Step indexes go on counting.
    */
   readonly retainSteps?: number;
-  /** Set `hold` to wait at held steps. Without it, steps aren't held. */
+  /**
+   * Set `hold` to wait at held steps and pauses. Without it, a pause returns
+   * right away.
+   */
   readonly hold?: RecorderHold;
 }
 
-/** Options for holding an attempt at steps. */
+/** Options for holding an attempt at steps and pauses. */
 type RecorderHold = {
   /**
-   * Waits before each step when `steps` is set.
+   * Waits at each `screen.pause()` call, and before each step when `steps` is
+   * set.
    *
    * - If the promise resolves, the attempt continues.
    * - If it rejects, the attempt fails.
@@ -355,14 +359,18 @@ type RecorderHold = {
   /**
    * Set `steps` to wait at `ask` before each top-level step in a holdable
    * phase (`e2e run --step`). The step isn't recorded until `ask` resolves.
+   * Otherwise, only `screen.pause()` waits at `ask`.
    */
   readonly steps: boolean;
 };
 
-/** A step about to wait at `StepRecorderOptions.hold`: what the person stepping through the test is shown. */
+/** A step or pause about to wait at `StepRecorderOptions.hold`: what the person stepping through the test is shown. */
 export interface StepHoldRequest {
-  /** The kind of wait. `step` means a step is held before it runs. */
-  readonly kind: 'step';
+  /**
+   * The kind of wait. `step` means a step is held before it runs. `pause`
+   * means the test has reached `screen.pause()`.
+   */
+  readonly kind: 'step' | 'pause';
   readonly api: string;
   /** Already redacted. */
   readonly label: string;
@@ -378,6 +386,17 @@ interface HeldCall {
   readonly options: StepRunOptions;
   readonly cancel: AbortController;
   promise: Promise<unknown>;
+}
+
+/**
+ * A pause waiting at `hold`. If the body returns without awaiting it, the
+ * test fails with `STEP_NOT_AWAITED`.
+ */
+interface HeldPause {
+  readonly api: string;
+  readonly stack: string | undefined;
+  readonly cancel: AbortController;
+  promise: Promise<void>;
 }
 
 /** Frames kept when a step captures where it was called from; the user's line is a few frames up. */
@@ -434,10 +453,16 @@ export class StepRecorder {
   private readonly scope = new AsyncLocalStorage<StepRecord>();
   /** The hook steps run in from now on; undefined while the test body runs. */
   phase: StepPhase | undefined = undefined;
-  /** Whether a top-level step started now waits at `hold`: in `beforeEach` and the body, never in launch or teardown. */
+  /**
+   * Whether a top-level step started now waits at `hold`: in `beforeEach` and
+   * the body, never in launch or teardown. A pause fails outside these parts
+   * of the attempt, and after the body ends.
+   */
   holdable = false;
   /** Step calls waiting at their hold, in call order. */
   private readonly held = new Set<HeldCall>();
+  /** Pauses waiting at `hold`, ordered by when they were called. */
+  private readonly pauses = new Set<HeldPause>();
   /** IDs of steps whose bodies are still executing. */
   private readonly running = new Set<string>();
   /** The promise each running step returned to its caller, to observe when the caller did not. */
@@ -527,6 +552,71 @@ export class StepRecorder {
       return this.runHeld(this.hold.ask, { kind, api, label, stack, options, cancel: new AbortController(), promise: Promise.resolve() }, body);
     }
     return this.start(kind, api, label, stack, body, options, parent);
+  }
+
+  /**
+   * Pauses the attempt at `screen.pause()` until `hold.ask` resolves. Without
+   * `hold`, as in a program or an MCP session, it returns right away.
+   *
+   * With `hold`, the call fails outside a holdable part of the attempt or
+   * inside another step or an `expect.poll` read. The timers there keep
+   * running during a pause.
+   *
+   * The pause and any error that ends it are reported at the test line that
+   * called it, even if the runner sent the error from another process.
+   */
+  async pause(): Promise<void> {
+    if (this.hold === undefined) {
+      return;
+    }
+
+    const request: StepHoldRequest = { kind: 'pause', api: 'screen.pause', label: '' };
+    const stack = stepStack(this.projectRoot);
+    const source = sourceLocation(stack, this.projectRoot);
+    const pause: HeldPause = { api: request.api, stack, cancel: new AbortController(), promise: Promise.resolve() };
+
+    try {
+      // Teardown's separate timer would count time spent paused.
+      // Code the test didn't await would pause a test that has ended.
+      if (!this.holdable) {
+        throw new TestError(
+          'INVALID_ARGUMENT',
+          withHint(
+            `${request.api}() was called after the test body ended (in an afterEach hook, a fixture teardown, or code the test did not await)`,
+            'call it in fixture setup, a beforeEach hook, or the test body, and await it',
+          ),
+        );
+      }
+
+      // Another step or an `expect.poll` read has a separate timer that
+      // counts the pause.
+      if (this.current() !== undefined || insidePollRead()) {
+        throw new TestError(
+          'INVALID_ARGUMENT',
+          withHint(
+            `${request.api}() was called inside another step (an onAction hook or a project tool) or an expect.poll read`,
+            'call it between steps in fixture setup, a beforeEach hook, or the test body',
+          ),
+        );
+      }
+
+      this.pauses.add(pause);
+      pause.promise = this.hold.ask(source === undefined ? request : { ...request, source }, pause.cancel.signal);
+      await pause.promise;
+    } catch (cause) {
+      if (cause instanceof Error) {
+        relocateStack(cause, stack);
+      }
+
+      // Only `abandonRunning` cancels a pause and records its failure.
+      if (pause.cancel.signal.aborted) {
+        markAbandonedRejection(cause);
+      }
+
+      throw cause;
+    } finally {
+      this.pauses.delete(pause);
+    }
   }
 
   /**
@@ -659,7 +749,7 @@ export class StepRecorder {
    * awaited. Each such step is recorded as failed at the line it was called
    * on, its later outcome is dropped, and its rejection is observed here: a
    * step the body abandoned must not take the worker down as an unhandled
-   * rejection.
+   * rejection. Waiting pauses are cancelled the same way.
    */
   abandonRunning(): TestError | undefined {
     // A step still held never ran: it is recorded here, at its call, so it
@@ -671,10 +761,27 @@ export class StepRecorder {
       this.pending.set(record.id, call.promise);
       return record;
     });
+    // A pause doesn't record a step, so it's cancelled here.
+    const pauses = [...this.pauses];
+    for (const pause of pauses) {
+      this.pauses.delete(pause);
+      pause.cancel.abort();
+      this.abandonedPromises.push(pause.promise);
+    }
     const running = this.steps.filter((step) => this.running.has(step.id) && !this.abandoned.has(step.id));
+    const count = running.length + pauses.length;
+    const [pause] = pauses;
     let first: TestError | undefined;
+    if (pause !== undefined) {
+      const more = count > 1 ? ` and ${count - 1} more` : '';
+      first = new TestError(
+        'STEP_NOT_AWAITED',
+        withHint(`the test body returned before ${pause.api}()${more} finished`, 'put `await` in front of screen.pause()'),
+      );
+      relocateStack(first, pause.stack);
+    }
     for (const step of running) {
-      const more = first === undefined && running.length > 1 ? ` and ${running.length - 1} more` : '';
+      const more = first === undefined && count > 1 ? ` and ${count - 1} more` : '';
       const error = new TestError(
         'STEP_NOT_AWAITED',
         withHint(`the test body returned before ${callName(step)}${more} finished`, 'put `await` in front of every step call'),

@@ -80,7 +80,7 @@ export class TestRuns {
       defineMcpTool({
         name: 'run_tests',
         description:
-          'Run tests as npx e2e run does and return what it printed: each test, the failures with their code frames, and the summary. Without files it runs every test the config discovers; files narrows to a test file, a directory, a glob, or one test (tests/checkout.e2e.ts:12). The run is the CLI\'s own, in its own process, with its workers, retries, replay cache, and report (.e2e/report.json by default); it needs no open session and leaves open sessions alone. One run at a time; cancelling the call interrupts it as Ctrl-C would. To fix a failing test, open_session {test: "<file>:<line>"} stops on the screen where it failed.',
+          'Run tests as npx e2e run does and return what it printed: each test, the failures with their code frames, and the summary. Without files it runs every test the config discovers; files narrows to a test file, a directory, a glob, or one test (tests/checkout.e2e.ts:12). The run is the CLI\'s own, in its own process, with its workers, retries, replay cache, and report (.e2e/report.json by default); it needs no open session and leaves open sessions alone. One run at a time; cancelling the call interrupts it as Ctrl-C would. Remove screen.pause() calls first. A test that reaches one is paused, so the call waits until someone runs npx e2e run --step next from this directory to resume it, or npx e2e run --step stop to end the run. To fix a failing test, open_session {test: "<file>:<line>"} stops on the screen where it failed.',
         inputSchema: RunTestsArgs,
         readOnly: false,
         call: (args, extra) => this.run(args, extra.signal, extra.progress),

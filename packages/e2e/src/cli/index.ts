@@ -688,7 +688,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('-w, --watch', 'run, then run again whenever a test or source file or the config changes or a key asks: a (all), r (current), f (failed), u, p, t, q; not in CI')
     .option(
       '--step',
-      'run the first step, then hold each later one until a key: enter runs it, n runs to the next test, a runs all, h lists the keys, q stops. Without a terminal the run goes on in the background and returns at each held step with its screen; e2e run --step next runs that step, rest runs the rest, stop ends the run. One worker, not in CI',
+      'run the first step, then hold each later one until a key: enter runs it, n runs to the next test, a runs all (a test is still paused at screen.pause()), h lists the keys, q stops. Without a terminal the run goes on in the background and returns at each held step with its screen; e2e run --step next runs that step, rest runs the rest, stop ends the run. One worker, not in CI',
     )
     .addOption(new Option('--step-serve <log>').hideHelp())
     .optionsGroup('Output:')
@@ -853,7 +853,12 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
               const { serveSteps } = await import('./step-control.ts');
               return serveSteps(base, signals, { ...stepAddress(process.cwd()), log: serveLog });
             }
-            return options.step === true ? stepped(base, signals) : run(base);
+            if (options.step === true) {
+              return stepped(base, signals);
+            }
+
+            const { servePauses } = await import('./step-control.ts');
+            return servePauses(base, () => signals.escalate(), hasTerminal() ? process.stdin : undefined);
           });
         } finally {
           output.end();

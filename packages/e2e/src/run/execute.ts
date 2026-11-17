@@ -2,8 +2,8 @@
 
 import path from 'node:path';
 import type { TargetSession } from '@e2e-dev/core/lib/engine/surface';
-import type { ResolvedConfig } from '@e2e-dev/core/lib/config/resolve';
-import { classifyError, ConfigurationError, E2EError, serializeError, sanitizeRecordedText, truncateUtf8, TestError, TestTimeoutError, type SerializedError } from '@e2e-dev/core/lib/internal/errors';
+import { isCiMode, type ResolvedConfig } from '@e2e-dev/core/lib/config/resolve';
+import { classifyError, ConfigurationError, E2EError, serializeError, sanitizeRecordedText, truncateUtf8, TestError, TestTimeoutError, withHint, type SerializedError } from '@e2e-dev/core/lib/internal/errors';
 import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
 import { lateExpectedFailureError } from '@e2e-dev/core/lib/internal/expected-failure';
 import { settleExpectedFailure } from './expected-failure.ts';
@@ -84,11 +84,11 @@ export interface ExecutionEvents {
   onRunAbort?(error: RunError): void;
 }
 
-/** Options for holding an attempt at steps. */
+/** Options for holding an attempt at steps and pauses. */
 type ExecutorHold = {
   /**
-   * Asks the runner before each step when `steps` is set. The runner can
-   * call `readScreen` to read the screen during the wait.
+   * Asks the runner at each pause, and before each step when `steps` is set.
+   * The runner can call `readScreen` to read the screen during the wait.
    */
   readonly ask: (step: HeldStep, signal: AbortSignal, readScreen: StepHoldContext['readScreen']) => Promise<void>;
   /**
@@ -114,7 +114,10 @@ export interface TargetExecutorOptions extends EngineSessionsOptions {
    * interrupt waits for it to reach a harness call or its timeout.
    */
   readonly isolated: boolean;
-  /** Set `hold` to wait at held steps. Without it, steps aren't held. */
+  /**
+   * Set `hold` to wait at held steps and pauses. Without it, a pause returns
+   * right away.
+   */
   readonly hold?: ExecutorHold | undefined;
   /** Awaited before each pair starts, before the interrupt check. */
   readonly beforePair?: (() => Promise<void>) | undefined;
@@ -525,14 +528,26 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
     const redact = (text: string): string => redactForSession(openSession ?? undefined, this.config.allSecrets, text);
     // Set once the test clock exists, before the first step that could wait.
     let holds: AttemptHolds | undefined;
-    const hold = context.kind === 'setup' || attemptIndex > 0 ? undefined : this.options.hold;
+    const hold = this.options.hold;
     const steps = new StepRecorder(attemptId, {
       ...(hold === undefined
         ? {}
         : {
             hold: {
-              ask: (request: StepHoldRequest, signal: AbortSignal) => holds?.hold(request, signal) ?? Promise.resolve(),
-              steps: hold.steps,
+              ask: (request: StepHoldRequest, signal: AbortSignal) => {
+                if (request.kind === 'pause' && isCiMode(this.options.env)) {
+                  throw new TestError(
+                    'PAUSE_IN_CI',
+                    withHint(
+                      "a test can't be paused while CI is set, since there isn't anyone to resume it",
+                      'remove the screen.pause() call before you commit',
+                    ),
+                  );
+                }
+
+                return holds?.hold(request, signal) ?? Promise.resolve();
+              },
+              steps: hold.steps && context.kind !== 'setup' && attemptIndex === 0,
             },
           }),
       attempt: { id: shared?.attemptId ?? attemptId, index: attemptIndex },
@@ -821,13 +836,16 @@ export class TargetExecutor extends EngineSessions implements SerialHost {
        * within one cleanup budget, so teardown starts on a quiet session.
        * Left alone, such a step would fail once the session closed with
        * nobody to catch it and take the worker down. A poll is cancelled
-       * alone; left alone, its timeout would fail whatever ran then.
+       * alone; left alone, its timeout would fail whatever ran then. Pauses
+       * are refused after this point, so a later call from code the test
+       * didn't await fails the attempt right away.
        * Returns their errors, steps first.
        */
       const abandonNotAwaited = async (): Promise<TestError[]> => {
         if (attemptEnd.signal.aborted) return [];
         const pollsNotAwaited = bodyPolls.close();
         const stepsNotAwaited = steps.abandonRunning();
+        steps.holdable = false;
         if (stepsNotAwaited !== undefined) {
           attemptAbort.abort();
           await withTimeout(
