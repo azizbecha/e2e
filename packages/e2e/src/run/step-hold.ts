@@ -1,7 +1,7 @@
 /**
  * Holding steps for `e2e run --step`. A worker holds a top-level step before
  * it runs and asks the runner, which owns the terminal, whether it may; the
- * runner asks its `beforeStep` hook. While any step of an attempt is held, the
+ * runner asks its `hold` hook. While any step of an attempt is held, the
  * attempt's test clock is stopped, so the time a person spends looking at the
  * app is never charged to the test.
  */
@@ -11,8 +11,10 @@ import type { SourceLocation } from '@e2e-dev/core/lib/internal/source';
 import type { AttemptBudget } from '@e2e-dev/core/lib/run/budget';
 import type { StepHoldRequest } from '@e2e-dev/core/lib/run/steps';
 
-/** A step held before it runs, as the runner's `beforeStep` hook sees it. */
+/** A step held before it runs, as the runner's `hold` hook sees it. */
 export interface HeldStep {
+  /** Whether this wait is for a held step or a paused test. */
+  readonly kind: StepHoldRequest['kind'];
   readonly target: string;
   readonly testId: string;
   readonly agent: string;
@@ -23,21 +25,7 @@ export interface HeldStep {
   /** Already redacted. */
   readonly label: string;
   readonly source?: SourceLocation;
-  /**
-   * The screen the step is held on: its location, then one line per node,
-   * redacted and bounded the way the trace page lists a screen. Only a run
-   * that holds with `screen` reads it, and a screen that could not be read
-   * leaves it out.
-   */
-  readonly screen?: string;
 }
-
-/**
- * How a stepped run holds its steps: `hold` only holds them; `screen` also
- * reads the screen each hold starts on into `HeldStep.screen`, for a reader
- * who cannot see the app (`e2e run --step` without a terminal).
- */
-export type StepHolding = 'hold' | 'screen';
 
 /** A held step with its place among its test's held steps, from 1. */
 export interface NumberedStep {
@@ -53,7 +41,7 @@ export interface StepPrompt {
   readonly help: boolean;
 }
 
-/** What the runner hands `beforeStep` beside the step. */
+/** What the runner hands its `hold` hook beside the step. */
 export interface StepHoldContext {
   /** Aborts once the answer no longer matters: the step was abandoned, its attempt ended, or the run was interrupted. */
   readonly signal: AbortSignal;
@@ -62,6 +50,18 @@ export interface StepHoldContext {
    * list reporter's live window, else on stderr.
    */
   show(prompt: StepPrompt | undefined): void;
+  /**
+   * Reads the screen at the held step. The result starts with the location
+   * when available, then lists one line per node. The lines are redacted
+   * and bounded like those on the trace page. Steps held together share
+   * one read.
+   *
+   * It returns `undefined` if the screen can't be read, or if it's called
+   * after the wait has ended. A read that is still running when the wait
+   * ends can return the screen, so check that the step is still held
+   * before using the result.
+   */
+  readScreen(): Promise<string | undefined>;
 }
 
 /**
