@@ -429,6 +429,8 @@ const CLEAR_SCREEN = '\x1b[2J\x1b[3J\x1b[H';
 export interface RunCancel {
   readonly interruptSignal: AbortSignal;
   readonly forceSignal: AbortSignal;
+  /** Stops the run. The first call interrupts it, and the next forces it to end. */
+  readonly stop: () => void;
 }
 
 /** What `watchSession` needs from the command: the run, the terminal, and the signals. */
@@ -441,8 +443,10 @@ export interface WatchSessionOptions {
    * Executes one run: the real runner, with the session's signals and the
    * process's output, and the telemetry record. `cancel` is this run's own
    * ladder, for the keys: the first interrupts it, the next forces it.
+   * `keys` is the session's keyboard. It stops reading while a
+   * `screen.pause()` prompt reads the terminal.
    */
-  readonly run: (options: RunOptions, cancel: RunCancel) => Promise<RunOutcome>;
+  readonly run: (options: RunOptions, cancel: RunCancel, keys: Pick<Keyboard<WatchKey>, 'pause' | 'resume'> | undefined) => Promise<RunOutcome>;
   /** The keyboard, when stdin is a terminal; without it only file changes rerun. */
   readonly stdin: NodeJS.ReadStream | undefined;
   /** Writes the session's own lines to the terminal. */
@@ -460,9 +464,11 @@ export interface WatchSessionOptions {
  * until a quit or a signal. Answers the exit code of the last run that
  * finished. A change that lands during a run is kept and runs next; a key
  * during a run cancels it, as in vitest, and the loop waits again, while
- * Ctrl-C interrupts it as a signal would and ends the session. A config
- * with the json reporter ends it too: that reporter's stdout is one
- * document, as `--reporter json` is refused before it starts.
+ * Ctrl-C interrupts it as a signal would and ends the session. While a
+ * `screen.pause()` prompt is shown, it reads the keys. Pressing `q` there
+ * cancels the run. A config with the json reporter ends it too: that
+ * reporter's stdout is one document, as `--reporter json` is refused before
+ * it starts.
  */
 export async function watchSession(options: WatchSessionOptions): Promise<number> {
   const { pc, signals } = options;
@@ -473,7 +479,7 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
   let count = 0;
   let scope: WatchScope | undefined;
   let watcher: ChangeWatcher | undefined;
-  let running: { readonly interrupt: AbortController; readonly force: AbortController } | undefined;
+  let running: RunCancel | undefined;
   let wake: ((value: Wake) => void) | undefined;
   let exitCode = 0;
 
@@ -492,8 +498,7 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
       return;
     }
     if (running !== undefined) {
-      if (running.interrupt.signal.aborted) running.force.abort();
-      else running.interrupt.abort();
+      running.stop();
       return;
     }
     switch (key) {
@@ -545,22 +550,31 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
     // The config file is watched from the start; its test directories once it has loaded.
     rescope(scopeOf(undefined, options.cwd, options.base.configPath));
     for (;;) {
-      const cancel = { interrupt: new AbortController(), force: new AbortController() };
+      const interrupt = new AbortController();
+      const force = new AbortController();
+      const cancel: RunCancel = {
+        interruptSignal: interrupt.signal,
+        forceSignal: force.signal,
+        stop: () => {
+          if (interrupt.signal.aborted) {
+            force.abort();
+          } else {
+            interrupt.abort();
+          }
+        },
+      };
       running = cancel;
       count += 1;
       if (trigger.kind !== 'start') {
         options.write(`${options.clear ? CLEAR_SCREEN : '\n'}${bannerText(pc, trigger, filters, count)}`);
       }
-      const outcome = await options.run(planRun(options.base, filters, trigger), {
-        interruptSignal: cancel.interrupt.signal,
-        forceSignal: cancel.force.signal,
-      });
+      const outcome = await options.run(planRun(options.base, filters, trigger), cancel, keyboard);
       running = undefined;
       if (signals.interruptSignal.aborted) {
         exitCode = outcome.exitCode;
         break;
       }
-      if (cancel.interrupt.signal.aborted) options.write(`\n${pc.yellow('run cancelled')}\n`);
+      if (interrupt.signal.aborted) options.write(`\n${pc.yellow('run cancelled')}\n`);
       else exitCode = outcome.exitCode;
       if (outcome.config?.reporters.includes('json') === true) {
         options.writeError(`${pc.red('error')}: --watch cannot run with the json reporter the config sets: it writes one document to stdout\n`);

@@ -481,11 +481,11 @@ await screen.debug();
 /**
  * Pauses the test at this line, with the app open, until it is resumed with
  * Enter in the terminal or with `e2e run --step next` from another shell in
- * the same directory. In `e2e run`, the test is paused each time the line
- * runs. Paused time doesn't count toward the test's timeout. Call it with
- * `await` on `screen`, between steps in fixture setup, a `beforeEach` hook,
- * or the test body. Anywhere else, or with `CI` set, the test isn't paused
- * and the call fails.
+ * the same directory. In `e2e run` and `e2e run --watch`, the test is paused
+ * each time the line runs. Paused time doesn't count toward the test's
+ * timeout. Call it with `await` on `screen`, between steps in fixture setup,
+ * a `beforeEach` hook, or the test body. Anywhere else, or with `CI` set, the
+ * test isn't paused and the call fails.
  */
 pause(): Promise<void>;
 ```
@@ -500,7 +500,6 @@ await screen.pause();
 - ワーカーが複数ある場合、一時停止は古い順にひとつずつ表示し、その間もほかのワーカーは実行を続けます。
 - `--reporter json` では、一時停止を標準エラー出力に表示します。
 - [MCP](/mcp-server) の `open_session {test}` が開くセッション、`@e2e-dev/core` や `openHost` を使うプログラム、`e2e/runner` の `run()` では、テストは一時停止しません。`CI` が設定されている場合、`run()` でも `e2e run` と同様に、テストは `PAUSE_IN_CI` で失敗します。
-- `e2e run --watch` ではテストは一時停止しません。
 - MCP の `run_code` ツールでは拒否されます。
 - エージェントが MCP の `run_tests` ツールでテストを実行する前に、一時停止を削除してください。このツールのテストは `e2e run` で実行するため、テストが一時停止している間、エージェントに応答が返りません。
 - ロケーターにはありません。

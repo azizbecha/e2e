@@ -481,11 +481,11 @@ await screen.debug();
 /**
  * Pauses the test at this line, with the app open, until it is resumed with
  * Enter in the terminal or with `e2e run --step next` from another shell in
- * the same directory. In `e2e run`, the test is paused each time the line
- * runs. Paused time doesn't count toward the test's timeout. Call it with
- * `await` on `screen`, between steps in fixture setup, a `beforeEach` hook,
- * or the test body. Anywhere else, or with `CI` set, the test isn't paused
- * and the call fails.
+ * the same directory. In `e2e run` and `e2e run --watch`, the test is paused
+ * each time the line runs. Paused time doesn't count toward the test's
+ * timeout. Call it with `await` on `screen`, between steps in fixture setup,
+ * a `beforeEach` hook, or the test body. Anywhere else, or with `CI` set, the
+ * test isn't paused and the call fails.
  */
 pause(): Promise<void>;
 ```
@@ -500,7 +500,6 @@ await screen.pause();
 - 有多个工作进程时，暂停会按从早到晚的顺序逐个显示，其他工作进程继续运行。
 - 使用 `--reporter json` 时，暂停信息输出到 stderr。
 - 在 [MCP](/mcp-server) `open_session {test}` 打开的会话中、基于 `@e2e-dev/core` 或 `openHost` 的程序中，以及 `e2e/runner` 的 `run()` 中，测试不会暂停。设置了 `CI` 时，测试在 `run()` 中仍会以 `PAUSE_IN_CI` 失败，与 `e2e run` 相同。
-- 在 `e2e run --watch` 中，测试不会暂停。
 - 在 MCP `run_code` 工具中，它会被拒绝。
 - 在智能体使用 MCP `run_tests` 工具运行测试之前，请删除暂停。该工具的测试在 `e2e run` 下运行，因此测试暂停时智能体得不到响应。
 - 定位器不提供该方法。

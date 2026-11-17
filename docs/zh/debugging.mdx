@@ -344,7 +344,7 @@ Next: e2e run --step next to resume the test, or e2e run --step stop to end the 
   - 没有终端时，测试会在暂停处以 `RUNNER_BUSY` 失败。请用 `e2e run --step stop` 结束另一个运行，或在终端中运行这个运行。
   - 在终端中，仍然可以使用按键。会输出一行，说明命令会发送到另一个运行。
 - 设置了 `CI` 时，测试会在暂停处以 `PAUSE_IN_CI` 失败。请在提交前删除该调用。
-- 在 `e2e run --watch` 中，测试不会暂停。
+- 在 `e2e run --watch` 中，每次运行时测试都会暂停。显示暂停时，请使用暂停的按键，而不是监视模式的按键：按 Enter 恢复测试，或按 `q` 取消本次运行并留在监视模式中。从另一个 shell 使用的命令见[监视模式](/reference/cli#watch-mode)。
 - 在你的智能体使用 MCP [`run_tests`](/reference/mcp#run_tests) 工具运行测试之前，请删除暂停。否则，在你恢复测试之前，智能体都得不到响应。
 
 ## 控制台输出

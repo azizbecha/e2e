@@ -547,11 +547,11 @@ export interface Screen {
   /**
    * Pauses the test at this line, with the app open, until it is resumed with
    * Enter in the terminal or with `e2e run --step next` from another shell in
-   * the same directory. In `e2e run`, the test is paused each time the line
-   * runs. Paused time doesn't count toward the test's timeout. Call it with
-   * `await` on `screen`, between steps in fixture setup, a `beforeEach` hook,
-   * or the test body. Anywhere else, or with `CI` set, the test isn't paused
-   * and the call fails.
+   * the same directory. In `e2e run` and `e2e run --watch`, the test is paused
+   * each time the line runs. Paused time doesn't count toward the test's
+   * timeout. Call it with `await` on `screen`, between steps in fixture setup,
+   * a `beforeEach` hook, or the test body. Anywhere else, or with `CI` set, the
+   * test isn't paused and the call fails.
    */
   pause(): Promise<void>;
 }

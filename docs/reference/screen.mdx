@@ -590,11 +590,11 @@ See [Pause a test](/debugging#pause-a-test) for the keys and commands.
 /**
  * Pauses the test at this line, with the app open, until it is resumed with
  * Enter in the terminal or with `e2e run --step next` from another shell in
- * the same directory. In `e2e run`, the test is paused each time the line
- * runs. Paused time doesn't count toward the test's timeout. Call it with
- * `await` on `screen`, between steps in fixture setup, a `beforeEach` hook,
- * or the test body. Anywhere else, or with `CI` set, the test isn't paused
- * and the call fails.
+ * the same directory. In `e2e run` and `e2e run --watch`, the test is paused
+ * each time the line runs. Paused time doesn't count toward the test's
+ * timeout. Call it with `await` on `screen`, between steps in fixture setup,
+ * a `beforeEach` hook, or the test body. Anywhere else, or with `CI` set, the
+ * test isn't paused and the call fails.
  */
 pause(): Promise<void>;
 ```
@@ -615,7 +615,6 @@ await screen.pause();
   `open_session {test}` opens, in a program on `@e2e-dev/core` or
   `openHost`, or in `run()` from `e2e/runner`. With `CI` set, the test still
   fails with `PAUSE_IN_CI` in `run()`, as in `e2e run`.
-- A test isn't paused in `e2e run --watch`.
 - It is refused in the MCP `run_code` tool.
 - Remove pauses before an agent runs tests with the MCP `run_tests` tool.
   Its tests run under `e2e run`, so the agent doesn't get an answer while a test

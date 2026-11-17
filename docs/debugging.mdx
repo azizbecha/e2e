@@ -443,7 +443,11 @@ for what each answer holds.
     that the commands go to the other run.
 - With `CI` set, the test fails at the pause with `PAUSE_IN_CI`. Remove the
   call before you commit.
-- A test isn't paused in `e2e run --watch`.
+- In `e2e run --watch`, the test is paused on every run. While the pause is
+  shown, use its keys instead of the watch keys: press Enter to resume the
+  test, or `q` to cancel the run and stay in watch mode. See
+  [Watch mode](/reference/cli#watch-mode) for the commands from another
+  shell.
 - Remove pauses before your agent runs tests with the MCP
   [`run_tests`](/reference/mcp#run_tests) tool. Otherwise the agent doesn't
   get an answer until you resume the test.
